@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>일상 인지훈련</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#fff;color:#162331;font:28px/1.6 sans-serif}header,main,footer{max-width:1080px;margin:auto;padding:20px}header{display:flex;gap:16px;flex-wrap:wrap;align-items:center;justify-content:space-between}h1{font-size:40px;margin:10px 0}h2,#instruction{font-size:34px}p{margin:16px 0}button{font:inherit;color:#162331;background:#fff;border:3px solid #465d70;border-radius:14px;min-height:80px;padding:12px 20px;cursor:pointer;touch-action:manipulation}button:focus-visible{outline:5px solid #164eae;outline-offset:4px}button:disabled{opacity:1;cursor:default}.levels,.grid{display:grid;gap:14px}.levels{grid-template-columns:repeat(3,1fr)}.levels button{font-size:36px;min-height:130px}.grid{grid-template-columns:repeat(3,1fr);margin:20px 0}.card{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:120px}.emoji{font-size:56px;line-height:1.3}.good{background:#e5f4e9;border:5px solid #245e35}.answer{background:#fff2c8;border:5px solid #795700}.primary{background:#153e66;color:#fff;width:100%}#feedback{min-height:50px;font-weight:bold}#target{border:2px solid #728292;border-radius:14px;padding:14px}.board,.model{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:18px 0}.model>div{border:2px dashed #536779;min-height:86px;text-align:center;padding:8px}.board button{min-height:100px;padding:8px}.calendar{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;text-align:center}.calendar span{padding:5px 0;min-width:0}.today{border:4px solid #153e66;background:#eef3ff;border-radius:8px;font-weight:bold}footer{border-top:2px solid #ddd;margin-top:20px}footer button{width:100%}[hidden]{display:none!important}@media(max-width:650px){header,main,footer{padding:12px}.grid{grid-template-columns:repeat(2,1fr)}.levels{gap:8px}.levels button{font-size:30px;padding:8px}h1{font-size:34px}.board button{padding:4px}.model>div{padding:4px}.calendar{gap:0}}
+
+#resultDate{font-size:40px;font-weight:bold}
+#average{font-size:36px;font-weight:bold}
+#praise{font-size:34px;padding:20px;border:3px solid #43654e;border-radius:16px;background:#f4faf5}
+#reactionList{font-size:28px}
+/* 활동 영역만 원형 숫자 배치로 변경 */
+.number-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:20px 14px;align-items:start}
+.number-circle{border-radius:50%;width:104px;height:104px;min-height:104px;padding:0;font-size:40px;font-weight:bold;display:flex;align-items:center;justify-content:center}
+.number-circle.good{background:#c8ebcf;color:#174b27;border:5px solid #245e35}
+@media(max-width:650px){.number-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:16px 8px}.number-circle{width:84px;height:84px;min-height:84px;font-size:36px}}
+@media(max-width:310px){.number-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+</head>
+<body>
+<header><span id="person"></span><button id="voice" aria-pressed="true">음성 끄기</button></header>
+<main>
+<h1 id="title"></h1>
+<section id="start"><p>난이도를 골라 주세요.</p><div id="levels" class="levels"></div><p>8문제 · 시간 제한 없음</p><p id="recommend"></p></section>
+<section id="game" hidden>
+<p id="progress"></p><p id="instruction" tabindex="-1"></p>
+<div id="target" hidden></div><div id="model" hidden></div>
+<div id="choices" class="grid"></div>
+<p id="feedback" role="status" aria-live="polite"></p>
+<button id="action" class="primary" hidden></button>
+<button id="hint" hidden>목록 다시 보기</button>
+<button id="next" class="primary" hidden>다음 문제</button>
+</section>
+<section id="result" hidden><p id="resultDate"></p><h2 id="resultTitle" tabindex="-1">오늘의 훈련 결과</h2><p id="summary"></p><p id="average"></p><p id="praise"></p><p id="reactionList"></p><p>정답률: 맞게 누른 수 ÷ 전체 답 선택 수 × 100</p><p id="saved" role="status"></p><button id="restart">다시 하기</button></section>
+</main>
+<footer><button id="home">처음으로</button></footer>
+<script>
+'use strict';
+// 숫자 순서 활동: 기존 주의력 영역과 같은 형식으로 기록합니다.
+const domains=['주의력','기억력','지남력','실행기능','시공간','계산력','언어'];
+const titles=['🔍 장바구니에서 물건 찾기','🛒 장보기 목록 기억하기','📅 오늘의 달력 확인하기','🥗 생활 속 순서 정하기','🍽️ 식탁 차리기','💰 시장에서 물건값 계산하기','💬 생활 물건 이름과 쓰임 찾기'];
+const domain='주의력';
+const $=id=>document.getElementById(id),levels=['하','중','상'];
+let person='대상자 A';try{person=localStorage.getItem('현재대상자')||person;}catch(e){}
+$('person').textContent='대상자 코드: '+person;$('title').textContent='🔢 숫자를 순서대로 누르기';document.title='숫자순서 · 일상 인지훈련';
+const foods=[['사과','🍎'],['바나나','🍌'],['포도','🍇'],['딸기','🍓'],['수박','🍉'],['당근','🥕'],['브로콜리','🥦'],['오이','🥒'],['빵','🍞'],['달걀','🥚'],['우유','🥛'],['치즈','🧀'],['생선','🐟'],['밥','🍚']];
+const objects=[['우산','☂️','비가 올 때 몸이 젖지 않도록 가리는 물건','우산은 비가 올 때 써요.'],['안경','👓','눈앞에 쓰고 사물을 잘 보도록 돕는 물건','안경은 잘 보려고 써요.'],['전화기','☎️','멀리 있는 사람과 통화하는 물건','전화기로 가족과 통화해요.'],['칫솔','🪥','치약을 묻혀 이를 닦는 물건','칫솔로 이를 닦아요.'],['열쇠','🔑','잠긴 자물쇠를 여는 물건','열쇠로 자물쇠를 열어요.'],['가위','✂️','종이나 천을 자르는 물건','가위로 종이를 잘라요.'],['빗','🪮','머리카락을 가지런히 정리하는 물건','빗으로 머리를 빗어요.'],['시계','🕒','현재 시각을 확인하는 물건','시계로 시간을 확인해요.']];
+const plans=[
+ ['샐러드 만들기',['채소 꺼내기','채소 씻기','채소 썰기','그릇에 담기','소스 넣기','소스와 섞기']],
+ ['사과 준비하기',['사과 꺼내기','사과 씻기','물기 닦기','사과 자르기','씨 부분 덜어내기','접시에 담기']],
+ ['시리얼 준비하기',['빈 그릇 놓기','시리얼 봉지 열기','시리얼 붓기','우유 뚜껑 열기','우유 붓기','숟가락 놓기']],
+ ['잼 식빵 준비하기',['식빵 봉지 열기','식빵 꺼내기','접시에 식빵 놓기','잼 뚜껑 열기','잼 덜기','식빵에 잼 바르기']],
+ ['바나나 준비하기',['바나나 꺼내기','바나나 꼭지 잡기','껍질 벗기기','껍질 분리하기','바나나 썰기','접시에 담기']],
+ ['물 마시기',['빈 컵 놓기','물병 가져오기','물병 뚜껑 열기','컵에 물 붓기','컵 들기','물 마시기']],
+ ['식사 뒤 정리하기',['빈 그릇 모으기','남은 음식 덜어내기','그릇 씻기','그릇 헹구기','물기 닦기','찬장에 넣기']],
+ ['도시락 담기',['빈 도시락통 놓기','도시락 뚜껑 열기','밥 담기','반찬 담기','도시락 뚜껑 닫기','가방에 넣기']]
+];
+const positions=['윗줄 왼쪽','윗줄 가운데','윗줄 오른쪽','가운데 줄 왼쪽','가운데 칸','가운데 줄 오른쪽','아랫줄 왼쪽','아랫줄 가운데','아랫줄 오른쪽'];
+let questionOpened=null,reactionTimes=[];
+let voice=true,level='',tier=0,index=0,correct=0,wrong=0,errors=0,began=0,ended=false,done=false,q=null,found=new Set(),step=0,timer=null,sessionDate=null,phase='start';
+function shuffle(a){const b=[...a];for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
+function sample(a,n){return shuffle(a).slice(0,n);}
+function readRecords(){const a=JSON.parse(localStorage.getItem('인지훈련기록')||'[]');if(!Array.isArray(a))throw Error('기록 형식 오류');return a;}
+function stopVoice(){if('speechSynthesis'in window)speechSynthesis.cancel();}
+function speak(text){if(!voice||!('speechSynthesis'in window))return;stopVoice();const u=new SpeechSynthesisUtterance(text);u.lang='ko-KR';u.rate=0.85;const voices=speechSynthesis.getVoices().filter(v=>v.lang.toLowerCase().startsWith('ko'));const v=voices.find(v=>v.localService)||voices[0];if(v)u.voice=v;speechSynthesis.speak(u);}
+function instruct(text,extra=''){$('instruction').textContent=text;speak(text+(extra?' '+extra:''));}
+function button(label,handler,container=$('choices')){const b=document.createElement('button');b.textContent=label;b.onclick=handler;container.append(b);return b;}
+function target(text){$('target').hidden=!text;$('target').textContent=text;}
+function startScreen(){clearTimeout(timer);stopVoice();phase='start';$('start').hidden=false;$('game').hidden=true;$('result').hidden=true;$('levels').replaceChildren();let last=null;try{last=readRecords().filter(r=>r&&r.대상자===person&&r.영역===domain&&levels.includes(r.난이도)&&Number.isFinite(r.정답률)).reverse().sort((a,b)=>String(b.날짜).localeCompare(String(a.날짜)))[0];}catch(e){}let rec='';if(last){let n=levels.indexOf(last.난이도);if(last.정답률>=85)n=Math.min(2,n+1);else if(last.정답률<60)n=Math.max(0,n-1);rec=levels[n];}$('recommend').textContent=last?'최근 정답률 '+last.정답률+'% · 추천 난이도 '+rec:'';levels.forEach(l=>button(l+(l===rec?' · 추천':''),()=>begin(l),$('levels')));}
+function begin(l){reactionTimes=[];questionOpened=null;level=l;tier=levels.indexOf(l);index=correct=wrong=0;ended=false;sessionDate=new Date();began=performance.now();$('start').hidden=true;$('result').hidden=true;$('game').hidden=false;render();}
+function complete(){done=true;phase='complete';$('action').hidden=true;$('hint').hidden=true;$('choices').querySelectorAll('button').forEach(b=>b.disabled=true);$('next').hidden=false;}
+function answer(ok,b,onCorrect,reveal){if(done||b.disabled)return;recordReaction();if(ok){correct++;b.classList.add('good');b.disabled=true;$('feedback').textContent='잘하셨어요!';speak('잘하셨어요!');onCorrect();}else{wrong++;errors++;$('feedback').textContent='다시 생각해 볼까요?';speak('다시 생각해 볼까요?');if(errors===2){complete();reveal();}}}
+function revealText(text){$('feedback').textContent='다시 생각해 볼까요? 정답: '+text;speak('다시 생각해 볼까요? 정답은 '+text+'입니다.');}
+function options(values,correctValue,labels=v=>String(v),after=()=>{}){shuffle(values).forEach(v=>{const b=button(labels(v),()=>answer(v===correctValue,b,()=>{complete();after();},()=>{[...$('choices').children].forEach(c=>{if(c.dataset.value===String(correctValue))c.classList.add('answer');});revealText(labels(correctValue));}));b.dataset.value=String(v);});}
+// 반응시간은 답 선택 화면을 연 뒤 첫 답을 누를 때까지입니다.
+function armReaction(){questionOpened=performance.now();}
+function recordReaction(){if(questionOpened!==null&&reactionTimes[index]===undefined)reactionTimes[index]=Math.round((performance.now()-questionOpened)/10)/100;}
+function resultDateText(){const parts=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric',weekday:'long'}).formatToParts(new Date());const v=t=>parts.find(p=>p.type===t).value;return v('year')+'년 '+v('month')+'월 '+v('day')+'일 '+v('weekday');}
+function attention(){
+ const count=[5,9,12][tier],blankCount=[2,3,4][tier];
+ q={count,next:1};
+ instruct('1부터 '+count+'까지 순서대로 눌러 주세요.','숫자가 없는 빈 원은 누르지 마세요.');
+ target('다음 숫자: 1');
+ $('choices').classList.add('number-grid');
+ const items=shuffle([...Array.from({length:count},(_,i)=>i+1),...Array(blankCount).fill(null)]);
+ items.forEach((number,i)=>{
+  const b=button(number===null?'':String(number),()=>{
+   if(done||b.disabled)return;
+   recordReaction();
+   if(number===q.next){
+    correct++;b.classList.add('good');b.disabled=true;
+    b.setAttribute('aria-label',number+' 완료');q.next++;
+    if(q.next>count){
+     $('feedback').textContent='잘하셨어요! 모든 숫자를 순서대로 누르셨어요.';
+     target('1부터 '+count+'까지 완료');
+     speak('잘하셨어요! 모든 숫자를 순서대로 누르셨어요.');complete();
+    }else{
+     $('feedback').textContent='잘하셨어요!';target('다음 숫자: '+q.next);
+     speak('잘하셨어요!');
+    }
+   }else{
+    wrong++;errors++;
+    const text='다음 숫자는 '+q.next+'이에요';
+    $('feedback').textContent=text;speak(text);
+   }
+  });
+  b.className='number-circle';
+  b.style.justifySelf=['start','center','end'][Math.floor(Math.random()*3)];
+  b.style.marginTop=Math.floor(Math.random()*17)+'px';
+  b.setAttribute('aria-label',number===null?'숫자가 없는 빈 원':String(number));
+ });
+}
+// 장보기 목록은 준비 화면에서 충분히 본 뒤 스스로 가립니다.
+function memoryStudy(){q={targets:sample(foods,[2,3,index%2?5:4][tier])};phase='study';instruct('살 물건을 기억해 주세요.');target(q.targets.map(f=>f.join(' ')).join(' · '));$('action').hidden=false;$('action').textContent='기억했어요';$('action').onclick=()=>{target('');$('action').hidden=true;if(tier===2){phase='wait';instruct('잠시 편하게 쉬어 주세요.');timer=setTimeout(memoryRecall,10000);}else memoryRecall();};}
+function memoryRecall(){if(ended)return;phase='recall';instruct('기억한 물건을 모두 골라 주세요.');const count=[4,6,9][tier];const items=shuffle([...q.targets,...sample(foods.filter(f=>!q.targets.includes(f)),count-q.targets.length)]);items.forEach(f=>{const b=button(f[1]+' '+f[0],()=>answer(q.targets.includes(f),b,()=>{found.add(f[0]);if(found.size===q.targets.length)complete();},()=>{[...$('choices').children].forEach(c=>{if(q.targets.some(t=>t[0]===c.dataset.name))c.classList.add('answer');});revealText(q.targets.map(t=>t[0]).join(', '));}));b.className='card';b.dataset.name=f[0];});if(tier===0){$('hint').hidden=false;$('hint').onclick=()=>{const visible=!$('target').hidden;target(visible?'':q.targets.map(f=>f.join(' ')).join(' · '));$('hint').textContent=visible?'목록 다시 보기':'목록 가리기';};}armReaction();}
+function calendar(){const d=sessionDate,y=d.getFullYear(),m=d.getMonth();$('model').hidden=false;const heading=document.createElement('p');heading.textContent=y+'년 '+(m+1)+'월';const grid=document.createElement('div');grid.className='calendar';['일','월','화','수','목','금','토'].forEach(s=>{const e=document.createElement('span');e.textContent=s;grid.append(e);});for(let i=0;i<new Date(y,m,1).getDay();i++)grid.append(document.createElement('span'));for(let n=1;n<=new Date(y,m+1,0).getDate();n++){const e=document.createElement('span');e.textContent=n;if(n===d.getDate()){e.className='today';e.setAttribute('aria-label','오늘 '+n+'일');}grid.append(e);}$('model').append(heading,grid);}
+function orientation(){calendar();const d=new Date(sessionDate);const weekdays=['일요일','월요일','화요일','수요일','목요일','금요일','토요일'];let kind=index%4,prefix='오늘';if(tier===2){const offset=index%2?1:-1;d.setDate(d.getDate()+offset);prefix=offset===1?'내일':'어제';kind=index%4===0?3:index%4===1?2:index%4===2?1:3;}const value=[d.getFullYear(),d.getMonth()+1,d.getDate(),d.getDay()][kind],unit=['년','월','일',''][kind];const labels=v=>kind===3?weekdays[v]:v+unit;instruct(prefix+'의 '+['연도','월','날짜','요일'][kind]+'을 골라 주세요.');target(tier===0?'오늘: '+sessionDate.getFullYear()+'년 '+(sessionDate.getMonth()+1)+'월 '+sessionDate.getDate()+'일 '+weekdays[sessionDate.getDay()]:'테두리 표시: 오늘');const pool=kind===3?[0,1,2,3,4,5,6]:kind===1?Array.from({length:12},(_,i)=>i+1):kind===2?Array.from({length:new Date(d.getFullYear(),d.getMonth()+1,0).getDate()},(_,i)=>i+1):[value-2,value-1,value+1,value+2];options([value,...sample(pool.filter(v=>v!==value),tier+1)],value,labels);}
+function execution(){const plan=plans[index],all=plan[1];const chosen=tier===0?[all[0],all[3],all[5]]:tier===1?[all[0],all[1],all[3],all[5]]:index%2?all:[all[0],all[1],all[2],all[4],all[5]];q={steps:chosen};target('🥣 '+plan[0]);instruct('처음 할 일부터 순서대로 눌러 주세요.');const items=tier===2?[...chosen,'외출용 신발 신기']:chosen;shuffle(items).forEach(text=>{const b=button('🥣 '+text,()=>answer(text===chosen[step],b,()=>{step++;$('feedback').textContent='잘하셨어요! '+step+'단계 완료';if(step===chosen.length)complete();},()=>revealText(chosen.map((s,i)=>(i+1)+'. '+s).join(' → '))));});}
+function spatial(){const sets=[['밥그릇','🍚'],['국그릇','🥣'],['숟가락','🥄'],['물컵','🥛'],['젓가락','🥢'],['접시','🍽️']];const count=[3,index%2?5:4,index%2?6:5][tier];const slots=tier===2?[3,4,5,0,1,2]:sample([0,1,2,3,4,5,6,7,8],count);q={items:sets.slice(0,count),slots};$('choices').className='board';if(tier<2){$('model').hidden=false;const label=document.createElement('p');label.textContent='식탁 보기';const grid=document.createElement('div');grid.className='model';for(let n=0;n<9;n++){const e=document.createElement('div'),j=slots.indexOf(n);e.textContent=j<0?'·':sets[j][1]+' '+sets[j][0];grid.append(e);}$('model').append(label,grid);}for(let n=0;n<9;n++){const b=button(positions[n],()=>answer(n===slots[step],b,()=>{b.textContent=q.items[step][1]+' '+q.items[step][0];step++;if(step===count)complete();else spatialPrompt();},()=>{[...$('choices').children].forEach((c,k)=>{const j=slots.indexOf(k);if(j>=0){c.textContent=sets[j][1]+' '+sets[j][0];c.classList.add('answer');}});revealText(q.items.map((f,j)=>f[0]+': '+positions[slots[j]]).join(' / '));}));}spatialPrompt();}
+function spatialPrompt(){const item=q.items[step];target('놓을 물건: '+item[1]+' '+item[0]);if(tier===2){const text=step===1?'밥그릇 오른쪽에 국그릇을 놓아 주세요.':step===2?'국그릇 오른쪽에 숟가락을 놓아 주세요.':positions[q.slots[step]]+'에 '+item[0]+'을 놓아 주세요.';instruct(text);}else instruct('식탁 보기를 보고 '+item[0]+'을 같은 자리에 놓아 주세요.');}
+function calculation(){const first=(index%4+1)*1000,second=(index%3+1)*500,third=1000;let value=first,detail='🍎 사과 '+first.toLocaleString()+'원',text='가격과 같은 금액을 골라 주세요.';if(tier>=1){value=first+second;detail+=' + 🍞 빵 '+second.toLocaleString()+'원';text='물건값의 합계를 골라 주세요.';}if(tier===2){if(index%2){value+=third;detail+=' + 🥛 우유 1,000원';}detail+=' / 낸 돈 10,000원';value=10000-value;text='거스름돈을 골라 주세요.';}target(detail);instruct(text);const pool=[value+500,value+1000,value+1500,value-500,value-1000].filter(v=>v>0&&v!==value);options([value,...sample(pool,tier+1)],value,v=>v.toLocaleString()+'원');}
+function language(){const item=objects[index];if(tier===0){target(item[1]);instruct('그림에 맞는 이름을 골라 주세요.');const choices=[item,...sample(objects.filter(o=>o!==item),1)];options(choices,item,o=>o[0]);}else if(tier===1){target(item[1]+' '+item[0]);instruct('물건의 쓰임을 골라 주세요.');const choices=[item,...sample(objects.filter(o=>o!==item),2)];options(choices,item,o=>o[2]);}else{target(item[2]);instruct('설명에 맞는 물건을 골라 주세요.',item[2]);options([item,...sample(objects.filter(o=>o!==item),3)],item,o=>o[1]+' '+o[0],()=>{instruct('쓰임을 한 문장으로 말해 보세요.');target('예: '+item[3]);});}}
+function render(){questionOpened=null;clearTimeout(timer);stopVoice();errors=0;done=false;found=new Set();step=0;phase='answer';$('progress').textContent=(index+1)+' / 8문제 · '+domain+' · 난이도 '+level;$('feedback').textContent='';$('choices').replaceChildren();$('choices').className='grid';$('model').replaceChildren();$('model').hidden=true;target('');$('action').hidden=true;$('hint').hidden=true;$('hint').textContent='목록 다시 보기';$('next').hidden=true;$('next').textContent=index===7?'결과 보기':'다음 문제';const run={'주의력':attention,'기억력':memoryStudy,'지남력':orientation,'실행기능':execution,'시공간':spatial,'계산력':calculation,'언어':language};run[domain]();$('instruction').focus();if(domain!=='기억력')armReaction();}
+function dateText(){const d=new Date(),pad=n=>String(n).padStart(2,'0');return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())+' '+pad(d.getHours())+':'+pad(d.getMinutes());}
+function finish(){if(ended)return;ended=true;phase='result';clearTimeout(timer);stopVoice();const rate=Math.round(correct/(correct+wrong)*100)||0,minutes=Math.round((performance.now()-began)/600)/100;const average=Math.round(reactionTimes.reduce((sum,t)=>sum+t,0)/reactionTimes.length*100)/100;const record={대상자:person,날짜:dateText(),영역:domain,난이도:level,문제수:8,정답률:rate,오답수:wrong,'시간(분)':minutes,'문제별반응시간(초)':[...reactionTimes],'평균반응시간(초)':average};$('game').hidden=true;$('result').hidden=false;$('resultDate').textContent=resultDateText();$('average').textContent='평균 반응시간 '+average.toFixed(2)+'초';$('praise').textContent='오늘도 8문제를 끝까지 해내셨어요! 차근차근 생각하고 도전한 노력이 참 멋집니다. 보호자님도 함께 칭찬해 주세요.';$('reactionList').textContent='문제별 반응시간: '+reactionTimes.map((t,i)=>(i+1)+'번 '+t.toFixed(2)+'초').join(' · ');$('summary').textContent='정답률 '+rate+'% · 걸린 시간 '+minutes.toFixed(2)+'분 · 맞게 누른 수 '+correct+'회 · 오답 '+wrong+'회';try{const list=readRecords();list.push(record);localStorage.setItem('인지훈련기록',JSON.stringify(list));$('saved').textContent='기록이 저장되었습니다.';}catch(e){$('saved').textContent='기록을 저장하지 못했습니다. 브라우저의 저장 공간 설정을 확인해 주세요.';}$('resultTitle').focus();speak('오늘의 훈련을 마쳤습니다. 잘하셨어요!');}
+$('next').onclick=()=>{if(!done)return;if(index===7)finish();else{index++;render();}};
+$('voice').onclick=()=>{voice=!voice;$('voice').textContent=voice?'음성 끄기':'음성 켜기';$('voice').setAttribute('aria-pressed',String(voice));if(!voice)stopVoice();else speak(phase==='start'?'난이도를 골라 주세요.':phase==='result'?'오늘의 훈련을 마쳤습니다.':$('instruction').textContent+(domain==='언어'&&tier===2?' '+$('target').textContent:''));};
+$('restart').onclick=startScreen;$('home').onclick=()=>{clearTimeout(timer);stopVoice();location.href='00_메뉴.html';};window.addEventListener('pagehide',()=>{clearTimeout(timer);stopVoice();});startScreen();
+</script>
+</body>
+</html>

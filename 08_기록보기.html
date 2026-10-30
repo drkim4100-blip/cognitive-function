@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>인지훈련 기록 보기</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#fff;color:#172635;font:20px/1.6 sans-serif}main{max-width:1500px;margin:auto;padding:24px}h1{font-size:36px}h2{font-size:28px}h3{font-size:24px;margin:0 0 12px}button{font:inherit;min-height:80px;border:2px solid #405b73;border-radius:12px;padding:12px 20px;background:#fff;color:#172635;cursor:pointer;touch-action:manipulation}button:focus-visible{outline:4px solid #1755a5;outline-offset:3px}p{overflow-wrap:anywhere}.scroll{overflow-x:auto;margin:16px 0}table{border-collapse:collapse;width:100%;min-width:1100px}caption{text-align:left;font-weight:bold;margin-bottom:10px}th,td{border:1px solid #a3b0bd;padding:14px;text-align:left;vertical-align:middle}th{background:#edf2f7}td{overflow-wrap:anywhere}td button{min-width:140px;max-width:280px;overflow-wrap:anywhere}tr.selected td{background:#edf5ff}button[aria-pressed="true"]{background:#173f68;color:#fff}.metric{display:block;white-space:nowrap}.change{display:block;white-space:nowrap;font-weight:bold}.up{color:#175f38}.down{color:#9b2929}#charts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px}.chart{min-width:0;padding:18px;border:2px solid #a3b0bd;border-radius:14px}.plot{overflow-x:auto}svg{display:block;font:20px sans-serif}svg text{fill:#172635}.empty-chart{padding:24px 0}#notice{color:#713e00}footer{margin-top:28px;padding-top:22px;border-top:2px solid #c3ccd5}footer button{width:100%;font-size:28px;background:#173f68;color:white}[hidden]{display:none!important}@media(max-width:850px){main{padding:14px}#charts{grid-template-columns:1fr}}
+
+.tools{display:flex;flex-wrap:wrap;gap:12px;margin:20px 0}
+.danger{color:#8d2020;border-color:#8d2020}
+button:disabled{opacity:.6;cursor:default}
+#operationStatus{font-weight:bold;overflow-wrap:anywhere}
+</style>
+</head>
+<body>
+<main>
+<h1>📊 인지훈련 기록 보기</h1>
+<p id="instruction">요약표에서 대상자를 눌러 주세요.</p>
+<p id="notice" role="status" aria-live="polite"></p>
+<div class="tools" role="group" aria-label="기록 관리">
+<button id="exportCsv" type="button">엑셀로 내보내기</button>
+<button id="saveBackup" type="button">백업 저장</button>
+<button id="loadBackup" type="button">백업 불러오기</button>
+<button id="deletePerson" class="danger" type="button" disabled>대상자 기록 삭제</button>
+<input id="backupFile" type="file" accept=".json,application/json" hidden>
+</div>
+<p id="operationStatus" role="status" aria-live="polite"></p>
+<p id="deleteTarget"></p>
+<p id="empty" hidden>아직 저장된 기록이 없습니다</p>
+<section id="overview" hidden>
+<h2>대상자별 요약</h2>
+<p id="period"></p>
+<p>영역별 수치는 최근 회기의 정답률과 난이도이며, 변화는 같은 영역의 첫 회기 대비 차이(%p)입니다.</p>
+<div class="scroll" role="region" aria-label="대상자별 요약표" tabindex="0">
+<table><caption>대상자별 훈련 현황</caption><thead id="summaryHead"></thead><tbody id="summaryBody"></tbody></table>
+</div>
+</section>
+<section id="details" hidden aria-labelledby="selectedTitle">
+<h2 id="selectedTitle" tabindex="-1"></h2>
+<p>그래프는 같은 날짜에 시행한 회기별 정답률의 단순 평균이며, 날짜 간격을 실제 일수에 맞춰 표시합니다.</p>
+<div id="charts"></div>
+<h2>전체 기록 · 최근 순</h2>
+<p id="recordCount"></p>
+<div class="scroll" role="region" aria-label="선택한 대상자의 전체 기록" tabindex="0">
+<table><caption id="historyCaption"></caption><thead><tr><th scope="col">날짜</th><th scope="col">영역</th><th scope="col">난이도</th><th scope="col">문제수</th><th scope="col">정답률</th><th scope="col">오답수</th><th scope="col">시간(분)</th><th scope="col">평균 반응시간(초)</th><th scope="col">문제별 반응시간(초)</th></tr></thead><tbody id="historyBody"></tbody></table>
+</div>
+</section>
+<footer><button id="home" type="button">처음으로</button></footer>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const domains=['주의력','기억력','지남력','실행기능','시공간','계산력','언어'];
+const NS='http://www.w3.org/2000/svg';
+const DAY=86400000;
+let rows=[],selected='',selectionButtons=new Map(),selectionRows=new Map();
+function element(tag,text,parent){const node=document.createElement(tag);if(text!==undefined)node.textContent=text;if(parent)parent.append(node);return node;}
+function svgElement(tag,attrs,parent,text){const node=document.createElementNS(NS,tag);Object.entries(attrs||{}).forEach(([k,v])=>node.setAttribute(k,String(v)));if(text!==undefined)node.textContent=text;if(parent)parent.append(node);return node;}
+function dateParts(value){
+ if(typeof value!=='string')return null;
+ const m=value.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);if(!m)return null;
+ const [y,mo,d,h,mi]=m.slice(1).map(Number),time=Date.UTC(y,mo-1,d),check=new Date(time);
+ if(y<1000||check.getUTCFullYear()!==y||check.getUTCMonth()!==mo-1||check.getUTCDate()!==d||h>23||mi>59)return null;
+ return{day:value.slice(0,10),time};
+}
+function validRecord(r){return r&&typeof r==='object'&&typeof r.대상자==='string'&&r.대상자.trim()!==''&&domains.includes(r.영역)&&['하','중','상'].includes(r.난이도)&&dateParts(r.날짜)&&Number.isFinite(r.정답률)&&r.정답률>=0&&r.정답률<=100&&Number.isInteger(r.문제수)&&r.문제수>0&&Number.isInteger(r.오답수)&&r.오답수>=0&&Number.isFinite(r['시간(분)'])&&r['시간(분)']>=0;}
+function reactionAverageText(r){const t=r['평균반응시간(초)'];return Number.isFinite(t)&&t>=0?t.toFixed(2):'—';}
+function reactionListText(r){const a=r['문제별반응시간(초)'];return Array.isArray(a)&&a.every(t=>Number.isFinite(t)&&t>=0)?a.map((t,i)=>(i+1)+'번 '+t.toFixed(2)).join(' / '):'—';}
+function ascending(a,b){return a.날짜.localeCompare(b.날짜)||a.order-b.order;}
+function descending(a,b){return ascending(b,a);}
+function todayInfo(){const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Seoul',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date());const get=t=>p.find(v=>v.type===t).value;return dateParts(get('year')+'-'+get('month')+'-'+get('day')+' 00:00');}
+function labelDate(ms){const d=new Date(ms);return d.getUTCFullYear()+'-'+String(d.getUTCMonth()+1).padStart(2,'0')+'-'+String(d.getUTCDate()).padStart(2,'0');}
+function number(value){return String(Math.round((value+Number.EPSILON)*10)/10);}
+function dailyAverages(records){const map=new Map();records.forEach(r=>{const key=r.날짜.slice(0,10);if(!map.has(key))map.set(key,{day:key,time:dateParts(r.날짜).time,sum:0,count:0});const v=map.get(key);v.sum+=r.정답률;v.count++;});return [...map.values()].sort((a,b)=>a.time-b.time).map(v=>({...v,value:v.sum/v.count}));}
+function load(){
+ $('deletePerson').disabled=true;$('deleteTarget').textContent='';
+ let data=[];let warning='';
+ try{data=JSON.parse(localStorage.getItem('인지훈련기록')||'[]');if(!Array.isArray(data))throw Error('형식 오류');}
+ catch(error){rows=[];$('notice').textContent='기록을 불러오지 못했습니다. 브라우저의 저장 공간 설정과 기록 형식을 확인해 주세요.';$('overview').hidden=true;$('details').hidden=true;$('empty').hidden=true;return;}
+ rows=[];data.forEach((r,i)=>{if(validRecord(r))rows.push({...r,order:i});});
+ if(data.length!==rows.length)warning='형식이 맞지 않는 기록 '+(data.length-rows.length)+'건은 표시에서 제외했습니다. 저장된 원본은 변경하지 않았습니다.';
+ $('notice').textContent=warning;$('empty').hidden=data.length!==0;$('overview').hidden=rows.length===0;$('details').hidden=true;
+ if(!rows.length){if(data.length)$('notice').textContent=warning+' 표시할 수 있는 기록이 없습니다.';return;}
+ renderSummary();
+ const people=[...new Set(rows.map(r=>r.대상자))];let current='';try{current=localStorage.getItem('현재대상자')||'대상자 A';}catch(error){}
+ const person=people.includes(selected)?selected:people.includes(current)?current:people[0];selectPerson(person,false);
+}
+function renderSummary(){
+ $('summaryHead').replaceChildren();$('summaryBody').replaceChildren();selectionButtons=new Map();selectionRows=new Map();
+ const tr=element('tr',undefined,$('summaryHead'));['대상자','총 회기','최근 7일 훈련일수',...domains].forEach(t=>{const th=element('th',t,tr);th.setAttribute('scope','col');});
+ const today=todayInfo(),start=today.time-6*DAY;
+ $('period').textContent='최근 7일: '+labelDate(start)+' ~ '+today.day+' (오늘 포함, 한국 날짜 기준)';
+ const people=[...new Set(rows.map(r=>r.대상자))].sort((a,b)=>a.localeCompare(b,'ko'));
+ people.forEach(person=>{
+  const records=rows.filter(r=>r.대상자===person).sort(ascending),row=element('tr',undefined,$('summaryBody'));
+  const head=element('th',undefined,row);head.setAttribute('scope','row');const b=element('button',person,head);b.type='button';b.setAttribute('aria-pressed','false');b.setAttribute('aria-controls','details');b.onclick=()=>selectPerson(person,true);selectionButtons.set(person,b);selectionRows.set(person,row);
+  element('td',String(records.length),row);
+  const days=new Set(records.filter(r=>{const t=dateParts(r.날짜).time;return t>=start&&t<=today.time;}).map(r=>r.날짜.slice(0,10)));element('td',days.size+'일',row);
+  domains.forEach(domain=>{
+   const cell=element('td',undefined,row),group=records.filter(r=>r.영역===domain);
+   if(!group.length){cell.textContent='기록 없음';return;}
+   const first=group[0],last=group[group.length-1];const metric=element('span',last.난이도+' · '+number(last.정답률)+'%',cell);metric.className='metric';
+   const change=element('span',undefined,cell);change.className='change';
+   if(group.length===1){change.textContent='첫 기록';return;}
+   const delta=last.정답률-first.정답률;
+   change.textContent=Math.abs(delta)<0.000001?'변화 없음':(delta>0?'▲ +':'▼ −')+number(Math.abs(delta))+'%p';
+   if(delta>0)change.classList.add('up');else if(delta<0)change.classList.add('down');
+   change.title='첫 회기 '+number(first.정답률)+'% ('+first.난이도+') → 최근 회기 '+number(last.정답률)+'% ('+last.난이도+')';
+  });
+ });
+}
+function selectPerson(person,moveFocus){
+ selected=person;$('deletePerson').disabled=false;$('deleteTarget').textContent='삭제 대상: '+person;selectionButtons.forEach((b,key)=>b.setAttribute('aria-pressed',String(key===person)));selectionRows.forEach((r,key)=>r.classList.toggle('selected',key===person));
+ $('details').hidden=false;$('selectedTitle').textContent=person+' · 영역별 훈련 추이';$('charts').replaceChildren();
+ const records=rows.filter(r=>r.대상자===person);
+ domains.forEach(domain=>drawChart(domain,records.filter(r=>r.영역===domain)));
+ $('historyBody').replaceChildren();records.sort(descending).forEach(r=>{const tr=element('tr',undefined,$('historyBody'));[r.날짜,r.영역,r.난이도,r.문제수,number(r.정답률)+'%',r.오답수,r['시간(분)'],reactionAverageText(r),reactionListText(r)].forEach(v=>element('td',String(v),tr));});
+ $('recordCount').textContent='총 '+records.length+'회기';$('historyCaption').textContent=person+'의 전체 훈련 기록';if(moveFocus)$('selectedTitle').focus();
+}
+function drawChart(domain,records){
+ const card=element('section',undefined,$('charts'));card.className='chart';element('h3',domain,card);
+ const points=dailyAverages(records);if(!points.length){const p=element('p','아직 기록 없음',card);p.className='empty-chart';return;}
+ const scroll=element('div',undefined,card);scroll.className='plot';scroll.tabIndex=0;scroll.setAttribute('role','region');scroll.setAttribute('aria-label',domain+' 그래프: 가로로 스크롤할 수 있습니다');
+ const width=Math.max(600,points.length*90+110),height=390,left=70,right=35,top=50,bottom=90,plotWidth=width-left-right,plotHeight=height-top-bottom;
+ const svg=svgElement('svg',{width,height,viewBox:'0 0 '+width+' '+height,role:'img','aria-label':domain+' 날짜별 평균 정답률 선 그래프'},scroll);
+ svgElement('title',{},svg,domain+' 날짜별 평균 정답률');svgElement('desc',{},svg,points.map(p=>p.day+': '+number(p.value)+'%, '+p.count+'회기').join('; '));
+ const first=points[0].time,last=points[points.length-1].time;
+ const x=time=>first===last?left+plotWidth/2:left+(time-first)/(last-first)*plotWidth;
+ const y=value=>top+(100-value)/100*plotHeight;
+ for(let n=0;n<=100;n+=20){svgElement('line',{x1:left,y1:y(n),x2:width-right,y2:y(n),stroke:'#bdc8d2','stroke-width':1},svg);svgElement('text',{x:left-12,y:y(n)+7,'text-anchor':'end'},svg,n+'%');}
+ svgElement('line',{x1:left,y1:top,x2:left,y2:y(0),stroke:'#30485c','stroke-width':2},svg);
+ svgElement('line',{x1:left,y1:y(0),x2:width-right,y2:y(0),stroke:'#30485c','stroke-width':2},svg);
+ svgElement('text',{x:left,y:25},svg,'정답률');svgElement('text',{x:width-right,y:height-8,'text-anchor':'end'},svg,'날짜');
+ if(points.length>1)svgElement('polyline',{points:points.map(p=>x(p.time)+','+y(p.value)).join(' '),fill:'none',stroke:'#1655a0','stroke-width':3},svg);
+ points.forEach(p=>{
+  const circle=svgElement('circle',{cx:x(p.time),cy:y(p.value),r:6,fill:'#1655a0'},svg);svgElement('title',{},circle,p.day+' · '+number(p.value)+'% · '+p.count+'회기');
+  svgElement('text',{x:x(p.time),y:y(p.value)-14,'text-anchor':'middle','font-weight':'bold'},svg,number(p.value));
+ });
+ // 실제 날짜 간격은 유지하되 날짜 글자가 겹치면 일부 눈금만 표시합니다.
+ let previousX=-Infinity;
+ points.forEach((p,i)=>{const at=x(p.time);if(at-previousX<100)return;if(i<points.length-1&&x(last)-at<100)return;previousX=at;svgElement('text',{x:at,y:y(0)+32,'text-anchor':'middle'},svg,p.day.slice(5).replace('-','/'));svgElement('text',{x:at,y:y(0)+58,'text-anchor':'middle'},svg,p.day.slice(0,4));});
+}
+// 내보내기와 백업은 화면에서 제외된 항목도 포함한 원본 배열을 읽습니다.
+const fields=['대상자','날짜','영역','난이도','문제수','정답률','오답수','시간(분)','평균반응시간(초)','문제별반응시간(초)'];
+function rawRecords(){
+ const records=JSON.parse(localStorage.getItem('인지훈련기록')||'[]');
+ if(!Array.isArray(records))throw Error('저장된 기록이 배열 형식이 아닙니다.');
+ return records;
+}
+function report(text){$('operationStatus').textContent=text;}
+function download(content,type,filename){
+ const blob=new Blob([content],{type});
+ const url=URL.createObjectURL(blob),link=document.createElement('a');
+ link.href=url;link.download=filename;document.body.append(link);
+ try{link.click();}finally{link.remove();setTimeout(()=>URL.revokeObjectURL(url),10000);}
+}
+function csvCell(value){
+ if(Array.isArray(value))value=JSON.stringify(value);
+ let text=value===undefined||value===null?'':String(value);
+ // 문자열이 엑셀 수식으로 해석되는 것을 방지합니다.
+ if(typeof value==='string'&&/^[=+@\-\t\r\n]/.test(text))text="'"+text;
+ return '"'+text.replace(/"/g,'""')+'"';
+}
+function exportCsv(){
+ try{
+  const records=rawRecords();
+  const lines=[fields.map(csvCell).join(','),...records.map(r=>fields.map(k=>csvCell(r&&typeof r==='object'?r[k]:'')).join(','))];
+  download('\uFEFF'+lines.join('\r\n')+'\r\n','text/csv;charset=utf-8;','인지훈련기록_'+todayInfo().day+'.csv');
+  report('전체 '+records.length+'건의 CSV 다운로드를 요청했습니다.');
+ }catch(error){report('CSV를 내보내지 못했습니다: '+error.message);}
+}
+function saveBackup(){
+ try{
+  const records=rawRecords();
+  download(JSON.stringify(records,null,2),'application/json;charset=utf-8;','인지훈련기록_백업_'+todayInfo().day+'.json');
+  report('전체 '+records.length+'건의 JSON 백업 다운로드를 요청했습니다.');
+ }catch(error){report('백업을 저장하지 못했습니다: '+error.message);}
+}
+// 객체 속성 순서가 달라도 모든 항목과 값이 같으면 같은 기록입니다.
+function stableKey(value){
+ if(value===null||typeof value!=='object')return JSON.stringify(value);
+ if(Array.isArray(value))return '['+value.map(stableKey).join(',')+']';
+ return '{'+Object.keys(value).sort().map(k=>JSON.stringify(k)+':'+stableKey(value[k])).join(',')+'}';
+}
+function mergeBackup(incoming){
+ if(!Array.isArray(incoming))throw Error('백업은 기록 배열 형식이어야 합니다.');
+ const invalid=incoming.findIndex(r=>!validRecord(r));
+ if(invalid!==-1)throw Error('백업의 '+(invalid+1)+'번째 기록 형식이 올바르지 않습니다. 기존 기록은 변경하지 않았습니다.');
+ const existing=rawRecords(),seen=new Set(),merged=[];
+ let added=0,duplicates=0;
+ existing.forEach(record=>{const key=stableKey(record);if(seen.has(key)){duplicates++;return;}seen.add(key);merged.push(record);});
+ incoming.forEach(record=>{const key=stableKey(record);if(seen.has(key)){duplicates++;return;}seen.add(key);merged.push(record);added++;});
+ localStorage.setItem('인지훈련기록',JSON.stringify(merged));
+ load();
+ report('백업 불러오기 완료: '+added+'건 추가 · 중복 '+duplicates+'건 제외 · 전체 '+merged.length+'건');
+}
+async function importBackup(file){
+ if(!file)return;
+ $('loadBackup').disabled=true;
+ try{
+  const text=(await file.text()).replace(/^\uFEFF/,'');
+  mergeBackup(JSON.parse(text));
+ }catch(error){report('백업을 불러오지 못했습니다: '+error.message);}
+ finally{$('loadBackup').disabled=false;$('backupFile').value='';}
+}
+function deleteSelected(){
+ if($('deletePerson').disabled||!selected){report('먼저 요약표에서 대상자를 선택해 주세요.');return;}
+ const person=selected;
+ try{
+  const hasPerson=r=>r&&typeof r==='object'&&r.대상자===person;
+  const count=rawRecords().filter(hasPerson).length;
+  if(!count){load();report('선택한 대상자의 기록이 없습니다.');return;}
+  if(!window.confirm('대상자 ['+person+']의 기록 '+count+'건을 삭제하시겠습니까?\n삭제한 기록은 백업 파일이 있어야 복원할 수 있습니다.')){report('삭제를 취소했습니다.');return;}
+  const latest=rawRecords(),kept=latest.filter(r=>!hasPerson(r));
+  localStorage.setItem('인지훈련기록',JSON.stringify(kept));
+  selected='';load();
+  report('대상자 ['+person+']의 기록 '+(latest.length-kept.length)+'건을 삭제했습니다.');
+ }catch(error){report('기록을 삭제하지 못했습니다: '+error.message);}
+}
+$('exportCsv').onclick=exportCsv;
+$('saveBackup').onclick=saveBackup;
+$('loadBackup').onclick=()=>{$('backupFile').value='';$('backupFile').click();};
+$('backupFile').addEventListener('change',()=>importBackup($('backupFile').files[0]));
+$('deletePerson').onclick=deleteSelected;
+$('home').onclick=()=>{location.href='00_메뉴.html';};
+window.addEventListener('pageshow',load);window.addEventListener('storage',event=>{if(event.key===null||event.key==='인지훈련기록'||event.key==='현재대상자')load();});
+load();
+</script>
+</body>
+</html>

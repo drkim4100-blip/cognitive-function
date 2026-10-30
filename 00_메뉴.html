@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>인지훈련 메뉴</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#fff;color:#172635;font:28px/1.6 sans-serif}
+main{max-width:1100px;margin:auto;padding:24px}
+h1{font-size:40px;margin:16px 0}
+#today{font-size:40px;font-weight:bold;margin:0 0 20px}
+label{display:block;font-weight:bold;margin-bottom:10px}
+input{width:100%;min-height:80px;padding:12px 18px;border:3px solid #455d72;border-radius:14px;font:inherit;color:inherit;background:#fff}
+button{font:inherit;min-height:80px;padding:18px;border:3px solid #455d72;border-radius:16px;background:#fff;color:inherit;cursor:pointer;touch-action:manipulation}
+input:focus-visible,button:focus-visible{outline:5px solid #1755a5;outline-offset:4px}
+#instruction{margin:22px 0}
+#status{margin:10px 0;overflow-wrap:anywhere}
+#areas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+.area{min-width:0}
+.area button{width:100%;min-height:150px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:8px}
+.name{font-size:36px;font-weight:bold}
+.activity{font-size:28px;overflow-wrap:anywhere}
+.previous{font-size:28px;margin:10px 0 0;text-align:center;overflow-wrap:anywhere}
+footer{border-top:2px solid #d0d7df;margin-top:28px;padding-top:24px}
+footer button{width:100%;background:#173f68;color:#fff;min-height:90px}
+@media(max-width:650px){main{padding:16px}#areas{grid-template-columns:1fr}#today{font-size:34px}h1{font-size:36px}}
+</style>
+</head>
+<body>
+<main>
+<p id="today" role="timer" aria-live="off"></p>
+<h1>매일 하는 인지훈련</h1>
+<label for="participant">대상자 코드</label>
+<input id="participant" type="text" autocomplete="off" spellcheck="false" placeholder="대상자 A" aria-describedby="status">
+<p id="status" role="status" aria-live="polite"></p>
+<p id="instruction">훈련할 영역을 골라 주세요.</p>
+<div id="areas"></div>
+<footer><button id="records" type="button">기록 보기</button></footer>
+</main>
+<script>
+'use strict';
+const $=id=>document.getElementById(id);
+const areas=[
+ ['🔍','주의력','장바구니에서 물건 찾기','01_주의력.html'],
+ ['🧺','기억력','장보기 목록 기억하기','02_기억력.html'],
+ ['📅','지남력','오늘의 달력 확인하기','03_지남력.html'],
+ ['🧩','실행기능','간단한 요리 순서 정하기','04_실행기능.html'],
+ ['🟦','시공간','식탁 차리기','05_시공간.html'],
+ ['🧮','계산력','시장에서 물건값 계산하기','06_계산력.html'],
+ ['💬','언어','생활 물건 이름과 쓰임 찾기','07_언어.html'],
+ ['🔢','숫자 순서','1부터 순서대로 숫자 누르기','09_숫자순서.html','주의력']
+];
+const previousLabels=new Map();
+let subjectError='',recordError='';
+function currentPerson(){return $('participant').value.trim()||'대상자 A';}
+function status(){ $('status').textContent=[subjectError,recordError].filter(Boolean).join(' '); }
+function updateDate(){
+ const parts=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',year:'numeric',month:'numeric',day:'numeric',weekday:'long'}).formatToParts(new Date());
+ const value=type=>parts.find(part=>part.type===type).value;
+ $('today').textContent=value('year')+'년 '+value('month')+'월 '+value('day')+'일 '+value('weekday');
+}
+function validRecord(record){
+ if(!record||typeof record!=='object'||!['하','중','상'].includes(record.난이도)||!Number.isInteger(record.정답률)||record.정답률<0||record.정답률>100)return false;
+ if(typeof record.날짜!=='string')return false;
+ const match=record.날짜.match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2})$/);
+ if(!match)return false;
+ const y=Number(match[1]),m=Number(match[2]),d=Number(match[3]),h=Number(match[4]),min=Number(match[5]);
+ const date=new Date(y,m-1,d,h,min);
+ return date.getFullYear()===y&&date.getMonth()===m-1&&date.getDate()===d&&date.getHours()===h&&date.getMinutes()===min;
+}
+function refreshResults(){
+ let records=[];
+ recordError='';
+ try{
+  const saved=JSON.parse(localStorage.getItem('인지훈련기록')||'[]');
+  if(!Array.isArray(saved))throw Error('기록 형식 오류');
+  records=saved;
+ }catch(error){recordError='훈련 기록을 불러오지 못했습니다.';}
+ const person=currentPerson();
+ areas.forEach(([,area,,,recordArea=area])=>{
+  let latest=null;
+  records.forEach(record=>{
+   if(validRecord(record)&&record.대상자===person&&record.영역===recordArea&&(!latest||record.날짜>=latest.날짜))latest=record;
+  });
+  const label=previousLabels.get(area);
+  if(recordError){label.textContent='기록 확인 불가';}
+  else if(!latest){label.textContent='아직 기록 없음';}
+  else{
+   const date=latest.날짜;
+   label.textContent='지난번 '+latest.난이도+' · '+latest.정답률+'% · '+date.slice(5,7)+'/'+date.slice(8,10);
+  }
+ });
+ status();
+}
+function savePerson(normalize=false){
+ const person=currentPerson();
+ if(normalize)$('participant').value=person;
+ subjectError='';
+ try{localStorage.setItem('현재대상자',person);}
+ catch(error){subjectError='대상자 코드를 저장하지 못했습니다. 브라우저의 저장 공간 설정을 확인해 주세요.';}
+ status();
+ return !subjectError;
+}
+function navigate(file){
+ if(!savePerson(true))return;
+ location.href=file;
+}
+areas.forEach(([icon,name,activity,file],index)=>{
+ const card=document.createElement('section');card.className='area';
+ const button=document.createElement('button');button.type='button';
+ const title=document.createElement('span');title.className='name';title.textContent=icon+' '+name;
+ const subtitle=document.createElement('span');subtitle.className='activity';subtitle.textContent=activity;
+ const previous=document.createElement('p');previous.className='previous';previous.id='previous-'+index;
+ button.setAttribute('aria-describedby',previous.id);button.append(title,subtitle);button.onclick=()=>navigate(file);
+ card.append(button,previous);$('areas').append(card);previousLabels.set(name,previous);
+});
+try{$('participant').value=localStorage.getItem('현재대상자')||'대상자 A';}
+catch(error){$('participant').value='대상자 A';subjectError='대상자 코드를 불러오지 못했습니다.';}
+$('participant').addEventListener('input',()=>{savePerson();refreshResults();});
+$('participant').addEventListener('change',()=>{savePerson(true);refreshResults();});
+$('records').onclick=()=>navigate('08_기록보기.html');
+window.addEventListener('pageshow',()=>{updateDate();refreshResults();});
+window.addEventListener('storage',event=>{
+ if(event.key===null||event.key==='현재대상자'){
+  try{$('participant').value=localStorage.getItem('현재대상자')||'대상자 A';subjectError='';}
+  catch(error){subjectError='대상자 코드를 불러오지 못했습니다.';}
+ }
+ if(event.key===null||event.key==='현재대상자'||event.key==='인지훈련기록')refreshResults();
+});
+updateDate();refreshResults();setInterval(updateDate,60000);
+</script>
+</body>
+</html>

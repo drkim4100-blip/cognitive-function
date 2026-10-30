@@ -1,0 +1,291 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>왼쪽까지 천천히</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f6f4;color:#193d32;font:28px/1.5 system-ui,sans-serif}
+main{max-width:1100px;margin:auto;padding:24px}
+h1{font-size:40px;margin:0}h2{font-size:32px;margin:0 0 16px}
+p{margin:16px 0}
+button,input,textarea{font:inherit}
+button{min-height:72px;border:2px solid #537d6d;border-radius:16px;padding:12px 20px;background:white;color:#193d32;cursor:pointer}
+button:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:5px solid #e1a000;outline-offset:3px}
+button:disabled{cursor:default}
+.primary{background:#17634f;color:white}
+.panel{padding:24px;background:white;border:1px solid #cedbd4;border-radius:24px;margin:20px 0}
+.row{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+input,textarea{display:block;width:100%;padding:12px;border:2px solid #75998a;border-radius:12px;margin-top:8px}
+label{display:block;margin:20px 0}
+.badge{display:inline-block;background:#e4efe8;padding:8px 16px;border-radius:12px}
+#field{border:4px solid #bbcec4;border-radius:20px;padding:20px}
+#field.cued{border-left:18px solid #d88d00}
+#anchor{background:#fff0bf;padding:10px;margin-bottom:18px;border-radius:10px}
+#grid{display:grid;grid-template-columns:1fr 1fr;gap:20px 12%}
+.tile{height:130px;position:relative}
+svg{width:90px;height:90px;vertical-align:middle}
+.found{background:#d9f2e5;border:5px solid #21744d}
+.found::after{content:"✓";position:absolute;right:10px;top:0;font-size:36px;color:#185c3d}
+.wrong{background:#fff0cb}
+#message{min-height:48px;font-weight:bold}
+summary{cursor:pointer;font-size:30px}
+[hidden]{display:none!important}
+.resultline{padding:10px 0;border-bottom:1px solid #dce5df}
+.notice{background:#fff2d0;padding:16px;border-radius:14px}
+@media(max-width:600px){main{padding:12px}h1{font-size:34px}.panel{padding:16px}#grid{gap:16px 8%}.tile{height:112px;padding:4px}svg{width:78px;height:78px}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<span class="badge">탐색 훈련 · 난이도 하</span>
+<h1>왼쪽까지 천천히</h1>
+<p>같은 그림을 찾아 눌러보세요.</p>
+</header>
+
+<section id="setup" class="panel">
+<h2>오늘의 탐색 훈련</h2>
+<p>큰 그림 6개 · 목표 2개<br>시간 제한 없이 천천히 진행합니다.</p>
+<label>대상자 코드
+<input id="person" placeholder="예: P001 · 실명 대신 코드 사용" maxlength="40">
+</label>
+<p>치료사와 함께 화면 중앙과 자세를 맞추고 시작하세요.</p>
+<button id="start" class="primary">훈련 시작</button>
+</section>
+
+<section id="task" hidden>
+<div class="panel">
+<div class="row"><strong id="prompt"></strong><button id="repeat">안내 다시 듣기</button></div>
+</div>
+<div id="field" class="cued">
+<div id="anchor">왼쪽 끝부터 살펴보세요 →</div>
+<div id="grid"></div>
+</div>
+<p id="message" role="status" aria-live="polite"></p>
+<div class="row">
+<button id="pause">잠시 쉬기</button>
+<button id="finish">이 과제 끝내기</button>
+</div>
+<details class="panel">
+<summary>치료사 단서 조절</summary>
+<p>정답 위치 대신 왼쪽 경계를 안내합니다.</p>
+<div class="row">
+<button id="toggle">왼쪽 색 띠 끄기</button>
+<button id="hint">왼쪽 음성 힌트</button>
+</div>
+</details>
+</section>
+
+<section id="result" class="panel" hidden>
+<h2>천천히 살펴보셨습니다</h2>
+<p id="date"></p>
+<div id="summary"></div>
+<label>치료사 메모
+<textarea id="memo" rows="4" placeholder="피로도, 탐색 전략, 도움 정도 등을 적어주세요."></textarea>
+</label>
+<div class="row">
+<button id="save" class="primary">기록 저장</button>
+<button id="next">다음 과제</button>
+<button id="home">시작 화면</button>
+</div>
+<p id="saved" role="status"></p>
+</section>
+
+<details class="panel">
+<summary>훈련 기록 보기 · 내보내기</summary>
+<p id="storageNote">기록은 이 실행 환경의 브라우저에 저장됩니다. 중요한 기록은 파일로 내보내세요.</p>
+<div class="row">
+<button id="json">상세 기록 JSON 저장</button>
+<button id="csv">요약 CSV 저장</button>
+</div>
+<div id="history"></div>
+</details>
+<details class="panel">
+<summary>사용 안내</summary>
+<p>시작 난이도는 그림 6개, 목표 2개입니다. 목표는 왼쪽과 오른쪽에 각각 1개씩 배치됩니다.</p>
+<p>처음에는 왼쪽 색 띠가 표시됩니다. 치료사가 단서를 조절하고 음성 힌트를 제공할 수 있습니다.</p>
+<p>음성 안내는 브라우저의 한국어 음성 지원에 따라 달라집니다. 소리가 나오지 않아도 화면 문구로 진행할 수 있습니다.</p>
+<p>클릭 위치와 시간을 기록하며, 실제 시선 이동이나 편측무시 정도를 측정하는 검사는 아닙니다.</p>
+</details>
+<p>불편하거나 피로하면 쉬고 치료사에게 알려주세요.</p>
+</main>
+<script>
+(()=>{
+"use strict";
+const $=id=>document.getElementById(id);
+const key="왼쪽탐색훈련_v1";
+const shapes=[
+{name:"사과",art:'<path d="M50 28C12 4 8 60 30 83Q43 95 51 86Q66 96 80 77C99 41 78 13 50 28" fill="#c63730"/><path d="M51 28Q45 4 66 5" fill="none" stroke="#305c32" stroke-width="7"/><ellipse cx="70" cy="15" rx="15" ry="7" fill="#387a3b"/>'},
+{name:"컵",art:'<path d="M20 22H70L65 83H25Z" fill="#276ca6"/><path d="M70 32H86Q99 57 69 65" fill="none" stroke="#276ca6" stroke-width="9"/>'},
+{name:"별",art:'<path d="M50 6L64 34L96 38L72 61L79 94L50 78L21 94L28 61L4 38L36 34Z" fill="#ae7000"/>'},
+{name:"물고기",art:'<ellipse cx="43" cy="50" rx="34" ry="25" fill="#7560a9"/><path d="M71 50L96 24V77Z" fill="#7560a9"/><circle cx="25" cy="44" r="5" fill="white"/>'}
+];
+let records=[],storageAvailable=true;
+try{const parsed=JSON.parse(localStorage.getItem(key)||"[]");records=Array.isArray(parsed)?parsed:[];localStorage.setItem(key,JSON.stringify(records))}
+catch(e){storageAvailable=false}
+let running=false,paused=false,cue=true,startTime=0,pauseTime=0,pauseTotal=0;
+let items=[],events=[],wrong=0,first=null,leftFirst=null,current=null,target=0;
+function icon(i){return '<svg viewBox="0 0 100 100" aria-hidden="true">'+shapes[i].art+"</svg>"}
+function speak(text){
+ if(!("speechSynthesis" in window))return;
+ try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(text);u.lang="ko-KR";u.rate=.85;speechSynthesis.speak(u)}catch(e){}
+}
+function seconds(){return Math.max(0,((paused?pauseTime:performance.now())-startTime-pauseTotal)/1000)}
+function event(type,extra={}){events.push({type,seconds:+seconds().toFixed(3),...extra})}
+function show(id){["setup","task","result"].forEach(x=>$(x).hidden=x!==id)}
+function setCue(value){
+ cue=value;$("field").classList.toggle("cued",cue);$("anchor").hidden=!cue;
+ $("toggle").textContent=cue?"왼쪽 색 띠 끄기":"왼쪽 색 띠 켜기";
+}
+function begin(){
+ current=null;running=true;paused=false;pauseTotal=0;events=[];wrong=0;first=null;leftFirst=null;
+ $("memo").value="";$("saved").textContent="";$("pause").textContent="잠시 쉬기";
+ $("grid").style.visibility="visible";$("grid").replaceChildren();setCue(true);
+ $("toggle").disabled=false;$("hint").disabled=false;
+ target=Math.floor(Math.random()*shapes.length);
+ const left=Math.floor(Math.random()*3)*2,right=Math.floor(Math.random()*3)*2+1;
+ items=Array.from({length:6},(_,i)=>({
+ index:i,row:Math.floor(i/2)+1,side:i%2===0?"left":"right",
+ target:i===left||i===right,found:false,
+ shape:i===left||i===right?target:(target+1+Math.floor(Math.random()*3))%shapes.length
+ }));
+ $("prompt").innerHTML="찾을 그림: "+icon(target)+" "+shapes[target].name+" 2개";
+ items.forEach((item,i)=>{
+  const b=document.createElement("button");b.className="tile";
+  b.innerHTML=icon(item.shape);b.setAttribute("aria-label",shapes[item.shape].name);
+  b.onclick=()=>choose(i,b);$("grid").append(b);
+ });
+ show("task");startTime=performance.now();event("start",{cue:true});
+ $("message").textContent="화면을 천천히 살펴보세요.";
+ speak(shapes[target].name+" 그림 두 개를 찾아 눌러보세요. 왼쪽 끝부터 천천히 살펴보세요.");
+}
+function choose(i,b){
+ if(!running||paused||items[i].found)return;
+ const item=items[i],time=+seconds().toFixed(3);
+ if(first===null)first={index:i,row:item.row,side:item.side,seconds:time};
+ event("selection",{index:i,row:item.row,side:item.side,correct:item.target,cue});
+ if(item.target){
+  item.found=true;b.classList.add("found");b.disabled=true;
+  b.setAttribute("aria-label",shapes[item.shape].name+" 찾음");
+  if(item.side==="left"&&leftFirst===null)leftFirst=time;
+  $("message").textContent="찾으셨어요.";
+  if(items.every(x=>!x.target||x.found))finish("completed");
+  else speak("찾으셨어요.");
+ }else{
+  wrong++;b.classList.add("wrong");setTimeout(()=>b.classList.remove("wrong"),650);
+  $("message").textContent="다시 살펴보세요.";speak("다시 살펴보세요.");
+ }
+}
+function finish(reason){
+ if(!running)return;
+ const duration=+seconds().toFixed(3);event("finish",{reason});running=false;paused=false;
+ current={
+ id:Date.now()+"-"+Math.random().toString(36).slice(2),
+ date:new Date().toISOString(),person:$("person").value.trim()||"미지정",
+ task:"같은 그림 찾기",difficulty:"하",totalPictures:6,totalTargets:2,
+ leftTargets:1,rightTargets:1,reason,durationSeconds:duration,
+ wrongSelections:wrong,firstSelection:first,firstLeftTargetSeconds:leftFirst,
+ leftFound:items.filter(x=>x.side==="left"&&x.found).length,
+ rightFound:items.filter(x=>x.side==="right"&&x.found).length,
+ leftOmitted:items.filter(x=>x.side==="left"&&x.target&&!x.found).length,
+ rightOmitted:items.filter(x=>x.side==="right"&&x.target&&!x.found).length,
+ events:JSON.parse(JSON.stringify(events)),layout:JSON.parse(JSON.stringify(items)),memo:""
+ };
+ $("date").textContent=new Date(current.date).toLocaleDateString("ko-KR");
+ const lines=[
+ "왼쪽 찾음 "+current.leftFound+"/1 · 미선택 "+current.leftOmitted+"개",
+ "오른쪽 찾음 "+current.rightFound+"/1 · 미선택 "+current.rightOmitted+"개",
+ "소요 시간 "+duration.toFixed(1)+"초 (쉰 시간 제외)",
+ "오답 선택 "+wrong+"회",
+ "첫 선택: "+(first?(first.side==="left"?"왼쪽":"오른쪽")+" · "+first.seconds.toFixed(1)+"초":"없음"),
+ "왼쪽 목표 첫 발견: "+(leftFirst===null?"미발견":leftFirst.toFixed(1)+"초"),
+ "음성 힌트 "+events.filter(x=>x.type==="voiceHint").length+"회",
+ reason==="completed"?"목표를 모두 찾았습니다.":"치료사가 과제를 종료했습니다."
+ ];
+ $("summary").replaceChildren();
+ lines.forEach(text=>{const p=document.createElement("div");p.className="resultline";p.textContent=text;$("summary").append(p)});
+ show("result");$("save").textContent="기록 저장";
+ speak(reason==="completed"?"두 개를 모두 찾으셨어요. 수고하셨습니다.":"이번 과제를 마쳤습니다. 수고하셨습니다.");
+}
+function save(){
+ if(!current)return;
+ current.memo=$("memo").value;
+ const copy=JSON.parse(JSON.stringify(current)),idx=records.findIndex(x=>x.id===copy.id);
+ if(idx<0)records.push(copy);else records[idx]=copy;
+ try{
+ localStorage.setItem(key,JSON.stringify(records));storageAvailable=true;
+ $("saved").textContent="기록을 저장했습니다.";
+ }catch(e){
+ storageAvailable=false;
+ $("saved").textContent="현재 실행 중인 화면에 기록을 보관했습니다. 화면을 닫기 전에 JSON으로 내보내세요.";
+ }
+ $("save").textContent="메모 수정 저장";renderHistory();
+}
+function renderHistory(){
+ $("storageNote").textContent=storageAvailable?
+ "기록은 이 실행 환경의 브라우저에 저장됩니다. 중요한 기록은 파일로 내보내세요.":
+ "이 환경에서는 영구 저장이 제한됩니다. 현재 화면의 기록은 JSON 또는 CSV로 내보내세요.";
+ $("history").replaceChildren();
+ const n=document.createElement("p");n.textContent="저장된 과제 "+records.length+"개";$("history").append(n);
+ records.slice(-10).reverse().forEach(r=>{
+ const p=document.createElement("p");
+ p.textContent=new Date(r.date).toLocaleString("ko-KR")+" · "+r.person+" · 왼쪽 "+r.leftFound+"/1 · 오른쪽 "+r.rightFound+"/1"+(r.memo?" · "+r.memo:"");
+ $("history").append(p);
+ });
+}
+function exportRecords(){
+ const a=JSON.parse(JSON.stringify(records));
+ if(current){
+ const r={...current,memo:$("memo").value},i=a.findIndex(x=>x.id===r.id);
+ if(i<0)a.push(r);else a[i]=r;
+ }
+ return a;
+}
+function download(text,ext,mime){
+ const blob=new Blob([text],{type:mime}),url=URL.createObjectURL(blob);
+ const a=document.createElement("a");a.href=url;
+ a.download="왼쪽탐색훈련_"+new Date().toLocaleDateString("sv-SE")+"."+ext;
+ document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+$("start").onclick=begin;
+$("repeat").onclick=()=>{
+ if(running&&!paused){event("instructionRepeated");speak(shapes[target].name+" 그림 두 개를 찾아 눌러보세요.");}
+};
+$("toggle").onclick=()=>{if(running&&!paused){setCue(!cue);event("cueChanged",{visible:cue})}};
+$("hint").onclick=()=>{
+ if(running&&!paused){event("voiceHint");speak("왼쪽 끝을 살펴보세요. 왼쪽부터 천천히 찾아보세요.")}
+};
+$("pause").onclick=()=>{
+ if(!running)return;
+ if(!paused){
+ pauseTime=performance.now();event("pause");paused=true;speak("잠시 쉬겠습니다.");
+ }else{
+ pauseTotal+=performance.now()-pauseTime;paused=false;event("resume");speak("천천히 다시 살펴보세요.");
+ }
+ $("pause").textContent=paused?"다시 시작":"잠시 쉬기";
+ $("grid").style.visibility=paused?"hidden":"visible";
+ $("toggle").disabled=paused;$("hint").disabled=paused;
+ $("message").textContent=paused?"쉬는 중입니다. 준비되면 다시 시작을 누르세요.":"화면을 천천히 살펴보세요.";
+};
+$("finish").onclick=()=>finish("therapistEnded");
+$("save").onclick=save;
+$("next").onclick=()=>{save();begin()};
+$("home").onclick=()=>{save();current=null;show("setup")};
+$("json").onclick=()=>download(JSON.stringify(exportRecords(),null,2),"json","application/json;charset=utf-8");
+$("csv").onclick=()=>{
+ const cols=["date","person","difficulty","reason","durationSeconds","leftFound","leftOmitted","rightFound","rightOmitted","wrongSelections","firstLeftTargetSeconds","memo"];
+ const header=["날짜","대상자코드","난이도","종료방식","소요초","왼쪽찾음","왼쪽미선택","오른쪽찾음","오른쪽미선택","오답선택","왼쪽첫발견초","메모"];
+ const esc=v=>{
+ let s=String(v??"");if(/^[=+@\-\t\r]/.test(s))s="'"+s;
+ return '"'+s.replaceAll('"','""')+'"';
+ };
+ const rows=[header,...exportRecords().map(r=>cols.map(k=>r[k]))];
+ download("\uFEFF"+rows.map(row=>row.map(esc).join(",")).join("\r\n"),"csv","text/csv;charset=utf-8");
+};
+renderHistory();
+})();
+</script>
+</body>
+</html>
